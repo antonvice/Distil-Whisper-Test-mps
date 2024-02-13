@@ -6,6 +6,7 @@ from datasets import load_dataset
 import timeit
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from tqdm.auto import tqdm
 
 # Constants and initial setup
 MODEL_IDS = {
@@ -141,10 +142,86 @@ def evaluate():
             
     # Visualization
     visualize_comparisons(models, model_types, times, similarities)
+    
 
+import numpy as np
+
+def evaluate_2():
+    DATASET_NAME = "mozilla-foundation/common_voice_16_1"
+    SUBSET = "en"
+    SPLIT = "validation"
+    
+    # Define the models to evaluate
+    models_info = {
+        'Faster Whisper Small': {'id': MODEL_IDS_FOR_FASTER_WHISPER['small'], 'type': 'fw'},
+        'Tiny Model': {'id': 'tiny.en', 'type': 'fw'}, 
+        'Transformers Small': {'id': MODEL_IDS['small'], 'type': 'tf'}
+    }
+    
+    # Initialize device and torch_dtype
+    device, torch_dtype = setup_mps()
+    
+    # Initialize metrics storage
+    metrics = {name: {'time': [], 'similarity': []} for name in models_info}
+    
+    # Loop through models
+    for model_name, model_info in models_info.items():
+        print(f"Evaluating {model_name}...")
+        
+        # Load dataset streamingly
+        dataset = load_dataset(DATASET_NAME, SUBSET, split=SPLIT, use_auth_token=True, trust_remote_code=True)
+        
+        if model_info['type'] == 'tf':
+            asr_pipeline = initialize_model_and_pipeline(model_info['id'], device, torch_dtype)
+        
+        # Loop through samples in the dataset
+        for sample in tqdm(dataset, desc=f"Evaluating {model_name}"):
+            sample_path = sample['path'] if 'path' in sample else None
+            
+            if model_info['type'] == 'fw':
+                transcription, elapsed_time = transcribe_and_time(model_info['id'], sample_path, device, torch_dtype)
+            elif model_info['type'] == 'tf':
+                # Make sure sample['audio'] is in the correct format for transformers
+                transcription, elapsed_time = transcribe_with_transformers(asr_pipeline, {"array": sample['audio']['array'], "sampling_rate": sample['audio']['sampling_rate']})
+            
+            similarity = calculate_semantic_similarity(sample['sentence'], transcription)
+            
+            # Store metrics
+            metrics[model_name]['time'].append(elapsed_time)
+            metrics[model_name]['similarity'].append(similarity)
+        
+        # Compute averages for the current model
+        avg_time = np.mean(metrics[model_name]['time'])
+        avg_similarity = np.mean(metrics[model_name]['similarity'])
+        print(f"{model_name} - Average Time: {avg_time:.2f}s, Average Similarity: {avg_similarity:.4f}")
+    
+    # Plot results
+    plot_metrics_2(models_info.keys(), metrics)
+
+    
+def plot_metrics_2(labels, metrics):
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    
+    # Time
+    avg_times = [np.mean(metrics[label]['time']) for label in labels]
+    axs[0].bar(labels, avg_times, color=['blue', 'green', 'red'])
+    axs[0].set_title('Average Time (s)')
+    axs[0].set_ylabel('Seconds')
+    
+    # Similarity
+    avg_similarities = [np.mean(metrics[label]['similarity']) for label in labels]
+    axs[1].bar(labels, avg_similarities, color=['blue', 'green', 'red'])
+    axs[1].set_title('Average Semantic Similarity')
+    axs[1].set_ylabel('Similarity Score')
+    
+    for ax in axs:
+        ax.set_xticklabels(labels, rotation=45, ha='right')
+    
+    plt.tight_layout()
+    plt.show()
 def main():
-    evaluate()
-
+    #evaluate()
+    evaluate_2()
     print("Finished!")
 
 if __name__ == "__main__":
