@@ -7,12 +7,8 @@ I wanted to see which models run faster and more accurate, the transformers with
 The models were benchmarked using the `librispeech_asr_dummy` dataset, which serves as a stand-in for the full LibriSpeech dataset used in ASR research. The dummy dataset contains a smaller subset of the original dataset for faster processing during testing.
 
 ## Models
-Three different sizes of models were compared from each family:
-- Large
-- Medium
-- Small
 
-For the Faster Whisper family, the models used were:
+For the Distil Whisper family, the models used were:
 - `distil-large-v2`
 - `distil-medium.en`
 - `distil-small.en`
